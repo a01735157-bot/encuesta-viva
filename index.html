@@ -1,0 +1,193 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Encuesta viva</title>
+<style>
+  :root {
+    color-scheme: light dark;
+    --ink: #1b1b1b;
+    --muted: #666;
+    --border: #ccc;
+    --accent: #b5651d;
+    --bg-card: #faf8f5;
+  }
+  body {
+    font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+    max-width: 640px;
+    margin: 40px auto;
+    padding: 0 20px;
+    color: var(--ink);
+  }
+  h1 { font-size: 1.4rem; margin-bottom: 4px; }
+  .pregunta {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 14px 16px;
+    margin: 16px 0 20px;
+    font-weight: 600;
+  }
+  form {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+    margin-bottom: 24px;
+  }
+  input {
+    padding: 8px 10px;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    font-size: 1rem;
+  }
+  input[name="alias"] { flex: 1 1 140px; }
+  input[name="valor"] { width: 100px; }
+  button {
+    padding: 8px 16px;
+    border: none;
+    border-radius: 4px;
+    background: var(--accent);
+    color: #fff;
+    font-size: 1rem;
+    cursor: pointer;
+  }
+  button:hover { opacity: 0.9; }
+  .resumen {
+    display: flex;
+    gap: 24px;
+    margin-bottom: 16px;
+    font-size: 0.95rem;
+  }
+  .resumen b { display: block; font-size: 1.2rem; }
+  .barra-fila {
+    display: grid;
+    grid-template-columns: 90px 1fr 40px;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 6px;
+    font-size: 0.85rem;
+  }
+  .barra-pista {
+    background: #eee;
+    border-radius: 3px;
+    height: 18px;
+    overflow: hidden;
+  }
+  .barra-relleno {
+    background: var(--accent);
+    height: 100%;
+  }
+</style>
+</head>
+<body>
+
+<h1>Encuesta viva</h1>
+<p class="pregunta" id="pregunta-texto">
+  ¿Cuál será la inflación anual de México en septiembre de 2026, según INEGI?
+</p>
+
+<form id="form-respuesta">
+  <input type="text" name="alias" placeholder="alias (opcional)">
+  <input type="number" step="any" name="valor" placeholder="4.2" required>
+  <button type="submit">Enviar</button>
+</form>
+
+<div class="resumen">
+  <div>Respuestas<b id="res-n">0</b></div>
+  <div>Mediana<b id="res-mediana">—</b></div>
+  <div>Promedio<b id="res-promedio">—</b></div>
+</div>
+
+<div id="histograma"></div>
+
+<script>
+  // Por ahora, datos inventados. En el Ejercicio 4 esto se reemplaza por
+  // lecturas reales a la tabla "respuestas" en Supabase.
+  const RESPUESTAS_FALSAS = [
+    3.8, 4.1, 4.0, 4.5, 3.9, 4.2, 4.3, 3.7, 4.0, 4.6,
+    4.1, 3.9, 4.4, 4.2, 4.0, 3.6, 4.5, 4.1, 3.8, 4.3,
+  ];
+
+  const form = document.getElementById("form-respuesta");
+  const elN = document.getElementById("res-n");
+  const elMediana = document.getElementById("res-mediana");
+  const elPromedio = document.getElementById("res-promedio");
+  const elHist = document.getElementById("histograma");
+
+  let respuestas = RESPUESTAS_FALSAS.slice();
+
+  function mediana(valores) {
+    const ordenados = valores.slice().sort((a, b) => a - b);
+    const mid = Math.floor(ordenados.length / 2);
+    return ordenados.length % 2 !== 0
+      ? ordenados[mid]
+      : (ordenados[mid - 1] + ordenados[mid]) / 2;
+  }
+
+  function promedio(valores) {
+    return valores.reduce((a, b) => a + b, 0) / valores.length;
+  }
+
+  function construirHistograma(valores, nBins = 7) {
+    if (valores.length === 0) return [];
+    const min = Math.min(...valores);
+    const max = Math.max(...valores);
+    const ancho = (max - min) / nBins || 1;
+    const bins = Array.from({ length: nBins }, (_, i) => ({
+      desde: min + i * ancho,
+      hasta: min + (i + 1) * ancho,
+      conteo: 0,
+    }));
+    for (const v of valores) {
+      let idx = Math.floor((v - min) / ancho);
+      if (idx >= nBins) idx = nBins - 1;
+      if (idx < 0) idx = 0;
+      bins[idx].conteo++;
+    }
+    return bins;
+  }
+
+  function render() {
+    elN.textContent = respuestas.length;
+    if (respuestas.length === 0) {
+      elMediana.textContent = "—";
+      elPromedio.textContent = "—";
+      elHist.innerHTML = "";
+      return;
+    }
+    elMediana.textContent = mediana(respuestas).toFixed(2);
+    elPromedio.textContent = promedio(respuestas).toFixed(2);
+
+    const bins = construirHistograma(respuestas);
+    const maxConteo = Math.max(...bins.map((b) => b.conteo), 1);
+    elHist.innerHTML = bins
+      .map((b) => {
+        const pct = (b.conteo / maxConteo) * 100;
+        const etiqueta = `${b.desde.toFixed(1)}–${b.hasta.toFixed(1)}`;
+        return `
+          <div class="barra-fila">
+            <span>${etiqueta}</span>
+            <div class="barra-pista">
+              <div class="barra-relleno" style="width:${pct}%"></div>
+            </div>
+            <span>${b.conteo}</span>
+          </div>`;
+      })
+      .join("");
+  }
+
+  form.addEventListener("submit", (ev) => {
+    ev.preventDefault();
+    const valor = parseFloat(form.valor.value);
+    if (Number.isNaN(valor)) return;
+    respuestas.push(valor);
+    form.reset();
+    render();
+  });
+
+  render();
+</script>
+
+</body>
+</html>
