@@ -101,21 +101,29 @@
 
 <div id="histograma"></div>
 
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
 <script>
-  // Por ahora, datos inventados. En el Ejercicio 4 esto se reemplaza por
-  // lecturas reales a la tabla "respuestas" en Supabase.
-  const RESPUESTAS_FALSAS = [
-    3.8, 4.1, 4.0, 4.5, 3.9, 4.2, 4.3, 3.7, 4.0, 4.6,
-    4.1, 3.9, 4.4, 4.2, 4.0, 3.6, 4.5, 4.1, 3.8, 4.3,
-  ];
+  // La llave "publishable" es pública a propósito: vive en este HTML y en el
+  // repo de GitHub, a la vista de todos. Lo que de verdad protege los datos
+  // son las políticas de Row Level Security (RLS) de la tabla "respuestas":
+  // con esta llave solo se puede insertar y leer filas, nunca modificar ni
+  // borrar, sin importar quién la tenga.
+  const SUPABASE_URL = "https://fgbrrsaychnjuuaaluvs.supabase.co";
+  const SUPABASE_PUBLISHABLE_KEY = "sb_publishable_rlkleMsX66FpHQEsNmobbg_-vxwBeUy";
+  const PREGUNTA = "¿Cuál será la inflación anual de México en septiembre de 2026, según INEGI?";
+
+  const supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY);
 
   const form = document.getElementById("form-respuesta");
   const elN = document.getElementById("res-n");
   const elMediana = document.getElementById("res-mediana");
   const elPromedio = document.getElementById("res-promedio");
   const elHist = document.getElementById("histograma");
+  const elPregunta = document.getElementById("pregunta-texto");
 
-  let respuestas = RESPUESTAS_FALSAS.slice();
+  elPregunta.textContent = PREGUNTA;
+
+  let respuestas = [];
 
   function mediana(valores) {
     const ordenados = valores.slice().sort((a, b) => a - b);
@@ -177,16 +185,39 @@
       .join("");
   }
 
-  form.addEventListener("submit", (ev) => {
+  async function cargarRespuestas() {
+    const { data, error } = await supabaseClient
+      .from("respuestas")
+      .select("valor")
+      .eq("pregunta", PREGUNTA);
+    if (error) {
+      console.error("Error leyendo respuestas:", error.message);
+      return;
+    }
+    respuestas = data.map((fila) => fila.valor);
+    render();
+  }
+
+  form.addEventListener("submit", async (ev) => {
     ev.preventDefault();
     const valor = parseFloat(form.valor.value);
     if (Number.isNaN(valor)) return;
-    respuestas.push(valor);
+    const alias = form.alias.value.trim() || null;
+
+    const { error } = await supabaseClient
+      .from("respuestas")
+      .insert({ pregunta: PREGUNTA, alias, valor });
+
+    if (error) {
+      alert("Error al guardar: " + error.message);
+      return;
+    }
     form.reset();
-    render();
+    cargarRespuestas();
   });
 
-  render();
+  cargarRespuestas();
+  setInterval(cargarRespuestas, 5000);
 </script>
 
 </body>
